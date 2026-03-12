@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Billard 3D</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0d0d0d; overflow: hidden; }
+
+    canvas { display: block; transition: opacity 0.15s; }
+
+    #hud {
+      position: absolute; top: 0; left: 0; right: 0;
+      padding: 14px; text-align: center;
+      pointer-events: none; user-select: none;
+      font-family: 'Courier New', monospace;
+    }
+    #scores {
+      color: #fff; font-size: 22px; font-weight: bold;
+      text-shadow: 0 0 12px rgba(255,255,255,0.25);
+    }
+    #tour  { margin-top: 5px; font-size: 14px; }
+    #puissance-bar {
+      margin-top: 5px; font-size: 13px; color: #ffdd00;
+      transition: opacity 0.15s;
+      text-shadow: 0 0 8px rgba(255,221,0,0.5);
+    }
+
+    #btn-view {
+      position: absolute; top: 14px; right: 14px;
+      background: rgba(255,255,255,0.08);
+      color: #ddd; border: 1px solid rgba(255,255,255,0.25);
+      padding: 8px 16px; border-radius: 8px;
+      cursor: pointer; font-family: 'Courier New', monospace;
+      font-size: 12px; backdrop-filter: blur(6px);
+      transition: background 0.2s, color 0.2s;
+      letter-spacing: 0.05em;
+    }
+    #btn-view:hover { background: rgba(255,255,255,0.18); color: #fff; }
+
+    #instructions {
+      position: absolute; bottom: 14px; left: 0; right: 0;
+      text-align: center; color: #555; font-size: 12px;
+      font-family: 'Courier New', monospace; pointer-events: none;
+    }
+    #message {
+      position: absolute; top: 45%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: #ffdd00; font-size: 26px; font-weight: bold;
+      font-family: 'Courier New', monospace;
+      text-shadow: 0 0 24px rgba(255,221,0,0.9);
+      opacity: 0; transition: opacity 0.4s;
+      pointer-events: none; white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div id="scores">J1 : 0 &nbsp;&nbsp;|&nbsp;&nbsp; J2 : 0</div>
+    <div id="tour" style="color:#f5f0e0">Tour : Joueur 1  (Blanc)</div>
+    <div id="puissance-bar">Force &nbsp;████████░░░░░░░&nbsp; 8 / 20</div>
+  </div>
+  <button id="btn-view">Vue dessus</button>
+  <div id="instructions">Souris : Viser &nbsp;|&nbsp; ↑ ↓ : Force &nbsp;|&nbsp; Clic gauche : Tirer &nbsp;|&nbsp; V : Vue dessus</div>
+  <div id="message"></div>
+
+  <script type="importmap">
+  { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+  </script>
+
+  <script type="module">
+  import * as THREE from 'three';
+
+  // ─── Constantes ────────────────────────────────────────────────────────────
+  const R      = 10;
+  const TX     = 120;
+  const TZ     = 60;
+  const FRIC   = 0.985;
+  const STOP_V = 0.03;
+
+  // ─── Scène ─────────────────────────────────────────────────────────────────
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d0d0d);
+  const gameFog = new THREE.FogExp2(0x0d0d0d, 0.0010);
+  scene.fog = gameFog;
+
+  // ─── Caméras ───────────────────────────────────────────────────────────────
+  const W = window.innerWidth, H = window.innerHeight;
+
+  // Caméra perspective (vue 3D)
+  const camPersp = new THREE.PerspectiveCamera(42, W / H, 1, 2000);
+  camPersp.position.set(-145, 165, 235);
+  camPersp.lookAt(0, 0, 0);
+
+  // Caméra orthographique (vue du dessus)
+  const OW = TX * 2 + 80;
+  const OH = OW / (W / H);
+  const camOrtho = new THREE.OrthographicCamera(-OW/2, OW/2, OH/2, -OH/2, 1, 1000);
+  camOrtho.position.set(0, 400, 0.001);
+  camOrtho.lookAt(0, 0, 0);
+
+  let activeCam = camPersp;
+  let viewMode  = '3d';
+
+  // ─── Rendu ─────────────────────────────────────────────────────────────────
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+  renderer.toneMapping       = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  document.body.appendChild(renderer.domElement);
+
+  // ─── Lumières naturelles (ambiance salle de billard) ───────────────────────
+  // Lumière hémisphérique : ciel chaud, sol sombre
+  scene.add(new THREE.HemisphereLight(0xfff3cc, 0x1a0800, 0.55));
+
+  // 3 lampes suspendues au-dessus de la table
+  const LAMP_Y = 130;
+  [-80, 0, 80].forEach(x => {
+    // Spot lumineux
+    const spot = new THREE.SpotLight(0xfff5cc, 4.5, 450, Math.PI / 4.5, 0.3, 1.2);
+    spot.position.set(x, LAMP_Y, 0);
+    spot.castShadow = true;
+    spot.shadow.mapSize.set(1024, 1024);
+    spot.shadow.camera.near = 10;
+    spot.shadow.camera.far  = 350;
+    spot.shadow.bias = -0.001;
+    scene.add(spot, spot.target);
+
+    // Abat-jour (visuel uniquement)
+    const shade = new THREE.Mesh(
+      new THREE.CylinderGeometry(6, 14, 14, 20, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0x1a1a1a, side: THREE.BackSide, roughness: 0.8 })
+    );
+    shade.position.set(x, LAMP_Y + 10, 0);
+    scene.add(shade);
+
+    // Disque intérieur brillant (la source lumineuse)
+    const bulb = new THREE.Mesh(
+      new THREE.CircleGeometry(5.5, 16),
+      new THREE.MeshStandardMaterial({ color: 0xfff5cc, emissive: 0xfff5cc, emissiveIntensity: 2 })
+    );
+    bulb.rotation.x = Math.PI / 2;
+    bulb.position.set(x, LAMP_Y + 3, 0);
+    scene.add(bulb);
+
+    // Fil de suspension
+    const wireGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(x, LAMP_Y + 17, 0),
+      new THREE.Vector3(x, LAMP_Y + 80, 0),
+    ]);
+    scene.add(new THREE.Line(wireGeo,
+      new THREE.LineBasicMaterial({ color: 0x444444 })));
+  });
+
+  // Lumière de remplissage latérale (évite les zones trop sombres)
+  const fillLight = new THREE.PointLight(0xfff0dd, 0.8, 500);
+  fillLight.position.set(0, 80, -200);
+  scene.add(fillLight);
+
+  // ─── Texture feutre ────────────────────────────────────────────────────────
+  const feltCanvas = document.createElement('canvas');
+  feltCanvas.width = feltCanvas.height = 512;
+  const fctx = feltCanvas.getContext('2d');
+  fctx.fillStyle = '#1e5e1e';
+  fctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 8000; i++) {
+    const x = Math.random() * 512, y = Math.random() * 512;
+    fctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.045})`;
+    fctx.fillRect(x, y, 1, 1);
+  }
+  const feltTex = new THREE.CanvasTexture(feltCanvas);
+  feltTex.wrapS = feltTex.wrapT = THREE.RepeatWrapping;
+  feltTex.repeat.set(4, 2);
+
+  // ─── Table ─────────────────────────────────────────────────────────────────
+  const felt = new THREE.Mesh(
+    new THREE.PlaneGeometry(TX * 2, TZ * 2),
+    new THREE.MeshStandardMaterial({ map: feltTex, roughness: 0.95, metalness: 0 })
+  );
+  felt.rotation.x = -Math.PI / 2;
+  felt.receiveShadow = true;
+  scene.add(felt);
+
+  // Ligne centrale + spots
+  const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22 });
+  const lineGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0.3, -TZ), new THREE.Vector3(0, 0.3, TZ)
+  ]);
+  scene.add(new THREE.Line(lineGeo, lineMat));
+  [[-TX * 0.5, 0], [0, 0], [TX * 0.5, 0]].forEach(([x, z]) => {
+    const d = new THREE.Mesh(
+      new THREE.CircleGeometry(2.2, 16),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.38 })
+    );
+    d.rotation.x = -Math.PI / 2;
+    d.position.set(x, 0.3, z);
+    scene.add(d);
+  });
+
+  // Rails
+  const railMat = new THREE.MeshStandardMaterial({ color: 0x7a3d00, roughness: 0.45, metalness: 0 });
+  const RW = 10, RH = 6;
+  [
+    [0,          -(TZ+RW/2), TX*2+RW*2, RW],
+    [0,           (TZ+RW/2), TX*2+RW*2, RW],
+    [-(TX+RW/2),  0,         RW, TZ*2     ],
+    [ (TX+RW/2),  0,         RW, TZ*2     ],
+  ].forEach(([x, z, w, d]) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, RH, d), railMat);
+    m.position.set(x, RH/2, z);
+    m.castShadow = m.receiveShadow = true;
+    scene.add(m);
+  });
+
+  // Cadre extérieur
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x3d1e00, roughness: 0.5, metalness: 0 });
+  const FT = 18, FH = 14;
+  [
+    [0,              -(TZ+RW+FT/2), TX*2+(RW+FT)*2, FT],
+    [0,               (TZ+RW+FT/2), TX*2+(RW+FT)*2, FT],
+    [-(TX+RW+FT/2),  0,             FT, TZ*2+RW*2  ],
+    [ (TX+RW+FT/2),  0,             FT, TZ*2+RW*2  ],
+  ].forEach(([x, z, w, d]) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, FH, d), frameMat);
+    m.position.set(x, FH/2 - 1, z);
+    m.receiveShadow = true;
+    scene.add(m);
+  });
+
+  // ─── Boules ────────────────────────────────────────────────────────────────
+  const sphereGeo = new THREE.SphereGeometry(R, 40, 28);
+
+  function makeBallTexture(base, stripe) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, 256, 256);
+    // Bande équatoriale
+    ctx.fillStyle = stripe;
+    ctx.fillRect(0, 102, 256, 52);
+    // Méridien central
+    ctx.fillRect(102, 0, 52, 256);
+    // Légère transparence sur les bandes pour un rendu doux
+    ctx.fillStyle = base + '44';
+    ctx.fillRect(0, 114, 256, 28);
+    ctx.fillRect(114, 0, 28, 256);
+    return new THREE.CanvasTexture(c);
+  }
+
+  function makeBall(color, texBase, texStripe, roughness = 0.08, metalness = 0.05) {
+    const tex = makeBallTexture(texBase, texStripe);
+    const m = new THREE.Mesh(sphereGeo,
+      new THREE.MeshStandardMaterial({ color, map: tex, roughness, metalness }));
+    m.castShadow = true;
+    scene.add(m);
+    return m;
+  }
+
+  const mesh1 = makeBall(0xf0ece0, '#f0ece0', '#b0a890');           // blanche ivoire
+  const mesh2 = makeBall(0xffd700, '#ffd700', '#a07800', 0.07);     // jaune
+  const mesh3 = makeBall(0xdd2200, '#dd2200', '#881200', 0.09);     // rouge
+
+  // Fausses ombres
+  const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32 });
+  function makeShadow() {
+    const s = new THREE.Mesh(new THREE.CircleGeometry(R * 0.85, 20), shadowMat);
+    s.rotation.x = -Math.PI / 2;
+    s.position.y = 0.1;
+    scene.add(s);
+    return s;
+  }
+  const shad1 = makeShadow(), shad2 = makeShadow(), shad3 = makeShadow();
+
+  // ─── Viseur ────────────────────────────────────────────────────────────────
+  const aimBuf = new Float32Array(6);
+  const aimGeo = new THREE.BufferGeometry();
+  aimGeo.setAttribute('position', new THREE.BufferAttribute(aimBuf, 3));
+  const aimLine = new THREE.Line(aimGeo,
+    new THREE.LineDashedMaterial({ color: 0xffdd00, dashSize: 7, gapSize: 4, transparent: true, opacity: 0.75 }));
+  scene.add(aimLine);
+
+  const AIM_DOTS = 5;
+  const aimDots = Array.from({ length: AIM_DOTS }, (_, i) => {
+    const d = new THREE.Mesh(
+      new THREE.SphereGeometry(1.8 - i * 0.2, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffdd00, transparent: true, opacity: 0.8 - i * 0.1 })
+    );
+    scene.add(d);
+    return d;
+  });
+
+  // ─── État du jeu ───────────────────────────────────────────────────────────
+  let mode   = 'ATTENTE';
+  let joueur = 1;
+  let scores = [0, 0];
+  let touched = new Set();
+  let col12 = false, col13 = false, col23 = false;
+  let aimAngle  = 0;
+  let puissance = 8;
+
+  const b = [
+    { x: -50, z:  10, vx: 0, vz: 0 },
+    { x:  50, z: -10, vx: 0, vz: 0 },
+    { x:   5, z:  20, vx: 0, vz: 0 },
+  ];
+
+  // ─── HUD ───────────────────────────────────────────────────────────────────
+  const elS = document.getElementById('scores');
+  const elT = document.getElementById('tour');
+  const elP = document.getElementById('puissance-bar');
+  const elI = document.getElementById('instructions');
+  const elM = document.getElementById('message');
+  let msgTimer = null;
+
+  function updateHUD() {
+    elS.textContent = `J1 : ${scores[0]}   |   J2 : ${scores[1]}`;
+    const nom   = joueur === 1 ? 'Blanc' : 'Jaune';
+    const color = joueur === 1 ? '#f0ece0' : '#ffd700';
+    elT.textContent = `● Tour : Joueur ${joueur}  (${nom})`;
+    elT.style.color = color;
+    if (mode === 'ATTENTE') {
+      const n = Math.round(puissance / 20 * 15);
+      elP.textContent = `Force  ${'█'.repeat(n)}${'░'.repeat(15 - n)}  ${puissance} / 20`;
+      elP.style.opacity = '1';
+      elI.textContent = 'Souris : Viser   |   ↑↓ : Force   |   Clic : Tirer   |   V : Vue dessus';
+    } else {
+      elP.style.opacity = '0';
+      elI.textContent = 'En jeu…';
+    }
+  }
+
+  function flash(text) {
+    elM.textContent = text;
+    elM.style.opacity = '1';
+    clearTimeout(msgTimer);
+    msgTimer = setTimeout(() => { elM.style.opacity = '0'; }, 1800);
+  }
+
+  // ─── Bascule de vue ────────────────────────────────────────────────────────
+  const btnView = document.getElementById('btn-view');
+
+  function toggleView() {
+    renderer.domElement.style.opacity = '0';
+    setTimeout(() => {
+      viewMode  = viewMode === '3d' ? 'top' : '3d';
+      activeCam = viewMode === '3d' ? camPersp : camOrtho;
+      scene.fog = viewMode === '3d' ? gameFog  : null;
+      btnView.textContent = viewMode === '3d' ? 'Vue dessus' : 'Vue 3D';
+      renderer.domElement.style.opacity = '1';
+    }, 150);
+  }
+
+  btnView.addEventListener('click', toggleView);
+
+  // ─── Physique ──────────────────────────────────────────────────────────────
+  function collide(a, bb) {
+    const dx = bb.x - a.x, dz = bb.z - a.z;
+    const d  = Math.sqrt(dx*dx + dz*dz);
+    if (d >= R*2 || d === 0) return false;
+    const nx = dx/d, nz = dz/d;
+    const dot = (a.vx - bb.vx)*nx + (a.vz - bb.vz)*nz;
+    if (dot > 0) {
+      a.vx  -= dot*nx;  a.vz  -= dot*nz;
+      bb.vx += dot*nx;  bb.vz += dot*nz;
+    }
+    const sep = (R*2 - d) / 2;
+    a.x  -= sep*nx;  a.z  -= sep*nz;
+    bb.x += sep*nx;  bb.z += sep*nz;
+    return true;
+  }
+
+  function wallBounce(q) {
+    if (q.x - R < -TX) { q.x = -TX + R; q.vx =  Math.abs(q.vx); }
+    if (q.x + R >  TX) { q.x =  TX - R; q.vx = -Math.abs(q.vx); }
+    if (q.z - R < -TZ) { q.z = -TZ + R; q.vz =  Math.abs(q.vz); }
+    if (q.z + R >  TZ) { q.z =  TZ - R; q.vz = -Math.abs(q.vz); }
+  }
+
+  function finTour() {
+    if (touched.size === 2) {
+      scores[joueur - 1]++;
+      flash('Carambole ! +1 point — rejoue');
+    } else {
+      joueur = joueur === 1 ? 2 : 1;
+    }
+    touched = new Set();
+    col12 = col13 = col23 = false;
+    mode = 'ATTENTE';
+    updateHUD();
+  }
+
+  // ─── Rolling ───────────────────────────────────────────────────────────────
+  const _ax = new THREE.Vector3();
+  const _dq = new THREE.Quaternion();
+
+  function roll(mesh, ball) {
+    mesh.position.set(ball.x, R, ball.z);
+    const spd = Math.sqrt(ball.vx*ball.vx + ball.vz*ball.vz);
+    if (spd < 0.001) return;
+    _ax.set(-ball.vz, 0, ball.vx).normalize();
+    _dq.setFromAxisAngle(_ax, spd / R);
+    mesh.quaternion.premultiply(_dq);
+  }
+
+  // ─── Update ────────────────────────────────────────────────────────────────
+  function update() {
+    if (mode === 'EN_JEU') {
+      for (const q of b) {
+        q.vx *= FRIC;  q.vz *= FRIC;
+        if (Math.hypot(q.vx, q.vz) < STOP_V) q.vx = q.vz = 0;
+      }
+      if (b.every(q => q.vx === 0 && q.vz === 0)) finTour();
+
+      const t12 = collide(b[0], b[1]);
+      const t13 = collide(b[0], b[2]);
+      const t23 = collide(b[1], b[2]);
+
+      if (joueur === 1) {
+        if (t12 && !col12) touched.add(1);
+        if (t13 && !col13) touched.add(2);
+      } else {
+        if (t12 && !col12) touched.add(0);
+        if (t23 && !col23) touched.add(2);
+      }
+      col12 = t12;  col13 = t13;  col23 = t23;
+
+      for (const q of b) { q.x += q.vx;  q.z += q.vz;  wallBounce(q); }
+    }
+
+    roll(mesh1, b[0]);  shad1.position.set(b[0].x, 0.1, b[0].z);
+    roll(mesh2, b[1]);  shad2.position.set(b[1].x, 0.1, b[1].z);
+    roll(mesh3, b[2]);  shad3.position.set(b[2].x, 0.1, b[2].z);
+
+    const cue     = b[joueur - 1];
+    const showAim = mode === 'ATTENTE';
+    aimLine.visible = showAim;
+    aimDots.forEach(d => d.visible = showAim);
+    if (showAim) {
+      const len = puissance * 6;
+      const tx  = cue.x + len * Math.cos(aimAngle);
+      const tz  = cue.z + len * Math.sin(aimAngle);
+      aimBuf[0] = cue.x; aimBuf[1] = R; aimBuf[2] = cue.z;
+      aimBuf[3] = tx;    aimBuf[4] = R; aimBuf[5] = tz;
+      aimGeo.attributes.position.needsUpdate = true;
+      aimLine.computeLineDistances();
+      for (let i = 0; i < AIM_DOTS; i++) {
+        const t = (i+1) / (AIM_DOTS+1);
+        aimDots[i].position.set(cue.x + t*len*Math.cos(aimAngle), R, cue.z + t*len*Math.sin(aimAngle));
+      }
+    }
+  }
+
+  // ─── Contrôles ─────────────────────────────────────────────────────────────
+  const raycaster  = new THREE.Raycaster();
+  const mouse2d    = new THREE.Vector2();
+  const tablePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const aimPt      = new THREE.Vector3();
+
+  document.addEventListener('mousemove', e => {
+    if (mode !== 'ATTENTE') return;
+    mouse2d.x = (e.clientX / window.innerWidth)  *  2 - 1;
+    mouse2d.y = (e.clientY / window.innerHeight) * -2 + 1;
+    raycaster.setFromCamera(mouse2d, activeCam);
+    if (raycaster.ray.intersectPlane(tablePlane, aimPt)) {
+      const cue = b[joueur - 1];
+      aimAngle = Math.atan2(aimPt.z - cue.z, aimPt.x - cue.x);
+    }
+  });
+
+  document.addEventListener('mousedown', e => {
+    if (e.button !== 0 || mode !== 'ATTENTE') return;
+    const vx = puissance * Math.cos(aimAngle);
+    const vz = puissance * Math.sin(aimAngle);
+    touched = new Set();
+    col12 = col13 = col23 = false;
+    if (joueur === 1) { b[0].vx = vx; b[0].vz = vz; }
+    else              { b[1].vx = vx; b[1].vz = vz; }
+    mode = 'EN_JEU';
+    updateHUD();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (['ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault();
+    if (e.key === 'v' || e.key === 'V') { toggleView(); return; }
+    if (mode !== 'ATTENTE') return;
+    if (e.key === 'ArrowUp'   && puissance < 20) { puissance++; updateHUD(); }
+    if (e.key === 'ArrowDown' && puissance > 2)  { puissance--; updateHUD(); }
+  });
+
+  window.addEventListener('resize', () => {
+    const W = window.innerWidth, H = window.innerHeight;
+    camPersp.aspect = W / H;
+    camPersp.updateProjectionMatrix();
+    const nOW = TX*2+80, nOH = nOW/(W/H);
+    camOrtho.left = -nOW/2; camOrtho.right  = nOW/2;
+    camOrtho.top  =  nOH/2; camOrtho.bottom = -nOH/2;
+    camOrtho.updateProjectionMatrix();
+    renderer.setSize(W, H);
+  });
+
+  // ─── Boucle ────────────────────────────────────────────────────────────────
+  function loop() {
+    requestAnimationFrame(loop);
+    update();
+    renderer.render(scene, activeCam);
+  }
+
+  updateHUD();
+  loop();
+  </script>
+</body>
+</html>

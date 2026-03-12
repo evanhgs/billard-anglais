@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Billard 3D</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0d0d0d;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Courier New', monospace;
+    }
+
+    .card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 48px 56px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 0 60px rgba(0,0,0,0.6);
+    }
+
+    .message {
+      color: #ffdd00;
+      font-size: 36px;
+      font-weight: bold;
+      letter-spacing: 0.06em;
+      text-align: center;
+      text-shadow: 0 0 32px rgba(255,221,0,0.7);
+      margin-bottom: 4px;
+    }
+
+    .divider {
+      width: 60px;
+      height: 1px;
+      background: rgba(255,221,0,0.3);
+      margin: 4px 0 8px;
+    }
+
+    .subtitle {
+      color: #ccc;
+      font-size: 13px;
+      letter-spacing: 0.03em;
+      text-align: center;
+    }
+
+    .play-btn {
+      margin-top: 6px;
+      padding: 10px 32px;
+      border-radius: 8px;
+      text-decoration: none;
+      color: #0d0d0d;
+      background: #ffdd00;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: bold;
+      letter-spacing: 0.05em;
+      transition: background 0.2s, box-shadow 0.2s;
+      box-shadow: 0 0 16px rgba(255,221,0,0.35);
+    }
+    .play-btn:hover {
+      background: #ffe94d;
+      box-shadow: 0 0 28px rgba(255,221,0,0.6);
+    }
+
+    .notice {
+      margin-top: 10px;
+      color: #555;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    #downloads {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .dl-btn {
+      display: inline-block;
+      padding: 7px 14px;
+      border-radius: 7px;
+      text-decoration: none;
+      color: #aaa;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.05);
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+    .dl-btn:hover {
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+      border-color: rgba(255,255,255,0.35);
+    }
+  </style>
+</head>
+<body>
+    <div class="card">
+        <h1 class="message">Billard Anglais</h1>
+        <div class="divider"></div>
+        <span class="subtitle">Jeu de carambole 3D</span>
+        <a class="play-btn" href="/game">Jouer (2 players)</a>
+        <span class="notice">Télécharger le jeu</span>
+        <div id="downloads">
+          <a class="dl-btn" href="{{ url_for('dlinux') }}">Linux</a>
+          <a class="dl-btn" href="{{ url_for('dwindows') }}">Windows</a>
+          <a class="dl-btn" href="{{ url_for('dmacos') }}">macOS</a>
+        </div>
+    </div>
+</body>
+
