@@ -1,0 +1,17 @@
+# production
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: billard-3d
+    restart: unless-stopped
+    ports:
+      - "8811:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

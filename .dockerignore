@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.spec
+.venv/
+venv/
+env/
+dist/
+build/
+.git/
+.github/
+.idea/
+.vscode/
+*.log
+.DS_Store
+
