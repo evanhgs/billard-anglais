@@ -52,11 +52,75 @@
       opacity: 0; transition: opacity 0.4s;
       pointer-events: none; white-space: nowrap;
     }
+
+    /* ── Overlay d'attente ─────────────────────────────────────── */
+    #overlay-wait {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(13,13,13,0.93);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #overlay-wait__box {
+      text-align: center;
+      font-family: 'Courier New', monospace;
+      color: #f5f0e0;
+    }
+    #overlay-wait__title {
+      font-size: 22px; font-weight: bold;
+      text-shadow: 0 0 16px rgba(255,255,255,0.3);
+      margin-bottom: 20px;
+    }
+    #overlay-wait__dot {
+      display: inline-block; width: 10px; height: 10px;
+      border-radius: 50%; background: #ffdd00;
+      margin-bottom: 26px;
+      animation: blink 1s step-start infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+    #overlay-wait__url-row {
+      display: flex; align-items: center; gap: 10px;
+      justify-content: center; margin-bottom: 8px;
+    }
+    #overlay-wait__url {
+      font-size: 13px; color: #888;
+      word-break: break-all; max-width: 380px;
+    }
+    #overlay-wait__copy {
+      background: rgba(255,255,255,0.08);
+      color: #ddd; border: 1px solid rgba(255,255,255,0.25);
+      padding: 6px 14px; border-radius: 6px;
+      cursor: pointer; font-family: 'Courier New', monospace;
+      font-size: 12px; white-space: nowrap;
+      transition: background 0.2s;
+    }
+    #overlay-wait__copy:hover { background: rgba(255,255,255,0.18); color: #fff; }
+    #overlay-wait__copied {
+      font-size: 12px; color: #4caf50;
+      transition: opacity 0.4s; margin-top: 4px;
+    }
+
+    /* ── Badge joueur ──────────────────────────────────────────── */
+    #player-badge { pointer-events: none; user-select: none; }
   </style>
 </head>
+{% if room_id %}
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+{% endif %}
 <body>
+  <div id="overlay-wait" style="display:none">
+    <div id="overlay-wait__box">
+      <div id="overlay-wait__title">En attente d'un adversaire…</div>
+      <span id="overlay-wait__dot"></span>
+      <div id="overlay-wait__url-row">
+        <span id="overlay-wait__url"></span>
+        <button id="overlay-wait__copy">Copier le lien</button>
+      </div>
+      <div id="overlay-wait__copied" style="opacity:0">Copié !</div>
+    </div>
+  </div>
+
   <div id="hud">
     <div id="scores">J1 : 0 &nbsp;&nbsp;|&nbsp;&nbsp; J2 : 0</div>
+    <div id="player-badge" style="display:none; margin-top:4px; font-size:13px;"></div>
     <div id="tour" style="color:#f5f0e0">Tour : Joueur 1  (Blanc)</div>
     <div id="puissance-bar">Force &nbsp;████████░░░░░░░&nbsp; 8 / 20</div>
   </div>
@@ -70,6 +134,11 @@
 
   <script type="module">
   import * as THREE from 'three';
+
+  // ─── Mode en ligne ─────────────────────────────────────────────────────────
+  const ROOM_ID = {{ room_id | tojson }};  // null = local, string = en ligne
+  let myPlayer  = null;   // 1 ou 2, assigné par le serveur
+  let socket    = null;
 
   // ─── Constantes ────────────────────────────────────────────────────────────
   const R      = 10;
@@ -309,11 +378,12 @@
   ];
 
   // ─── HUD ───────────────────────────────────────────────────────────────────
-  const elS = document.getElementById('scores');
-  const elT = document.getElementById('tour');
-  const elP = document.getElementById('puissance-bar');
-  const elI = document.getElementById('instructions');
-  const elM = document.getElementById('message');
+  const elS     = document.getElementById('scores');
+  const elT     = document.getElementById('tour');
+  const elP     = document.getElementById('puissance-bar');
+  const elI     = document.getElementById('instructions');
+  const elM     = document.getElementById('message');
+  const elBadge = document.getElementById('player-badge');
   let msgTimer = null;
 
   function updateHUD() {
@@ -330,6 +400,13 @@
     } else {
       elP.style.opacity = '0';
       elI.textContent = 'En jeu…';
+    }
+    if (ROOM_ID && myPlayer !== null) {
+      const badgeColor = myPlayer === 1 ? '#f0ece0' : '#ffd700';
+      const badgeName  = myPlayer === 1 ? 'Blanc'   : 'Jaune';
+      elBadge.textContent = `Vous : Joueur ${myPlayer}  (${badgeName})`;
+      elBadge.style.color   = badgeColor;
+      elBadge.style.display = 'block';
     }
   }
 
@@ -391,6 +468,59 @@
     col12 = col13 = col23 = false;
     mode = 'ATTENTE';
     updateHUD();
+  }
+
+  // ─── Tir (commun local + adverse en ligne) ────────────────────────────────
+  function applyShot(angle, power, playerNum) {
+    const vx = power * Math.cos(angle);
+    const vz = power * Math.sin(angle);
+    touched  = new Set();
+    col12 = col13 = col23 = false;
+    if (playerNum === 1) { b[0].vx = vx; b[0].vz = vz; }
+    else                 { b[1].vx = vx; b[1].vz = vz; }
+    mode = 'EN_JEU';
+    updateHUD();
+  }
+
+  // ─── Overlay d'attente ─────────────────────────────────────────────────────
+  function showWaitingOverlay() {
+    const overlay  = document.getElementById('overlay-wait');
+    const urlEl    = document.getElementById('overlay-wait__url');
+    const copyBtn  = document.getElementById('overlay-wait__copy');
+    const copiedEl = document.getElementById('overlay-wait__copied');
+    urlEl.textContent = window.location.href;
+    overlay.style.display = 'flex';
+    copyBtn.addEventListener('mousedown', e => e.stopPropagation());
+    copyBtn.addEventListener('click', () => {
+      const url = window.location.href;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+          copiedEl.style.opacity = '1';
+          setTimeout(() => { copiedEl.style.opacity = '0'; }, 1500);
+        });
+      } else {
+        // Fallback pour HTTP non sécurisé
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        copiedEl.style.opacity = '1';
+        setTimeout(() => { copiedEl.style.opacity = '0'; }, 1500);
+      }
+    });
+  }
+
+  function hideWaitingOverlay() {
+    document.getElementById('overlay-wait').style.display = 'none';
+  }
+
+  function showOpponentLeft() {
+    myPlayer = null;   // bloque tout input (joueur !== null toujours)
+    elM.textContent   = 'Adversaire déconnecté';
+    elM.style.opacity = '1';
+    renderer.domElement.style.opacity = '0.35';
   }
 
   // ─── Rolling ───────────────────────────────────────────────────────────────
@@ -473,6 +603,7 @@
 
   document.addEventListener('mousedown', e => {
     if (e.button !== 0 || mode !== 'ATTENTE') return;
+    if (ROOM_ID && joueur !== myPlayer) return;
     const vx = puissance * Math.cos(aimAngle);
     const vz = puissance * Math.sin(aimAngle);
     touched = new Set();
@@ -481,12 +612,14 @@
     else              { b[1].vx = vx; b[1].vz = vz; }
     mode = 'EN_JEU';
     updateHUD();
+    if (ROOM_ID) socket.emit('shoot', { room_id: ROOM_ID, angle: aimAngle, power: puissance });
   });
 
   document.addEventListener('keydown', e => {
     if (['ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault();
     if (e.key === 'v' || e.key === 'V') { toggleView(); return; }
     if (mode !== 'ATTENTE') return;
+    if (ROOM_ID && joueur !== myPlayer) return;
     if (e.key === 'ArrowUp'   && puissance < 20) { puissance++; updateHUD(); }
     if (e.key === 'ArrowDown' && puissance > 2)  { puissance--; updateHUD(); }
   });
@@ -507,6 +640,43 @@
     requestAnimationFrame(loop);
     update();
     renderer.render(scene, activeCam);
+  }
+
+  // ─── Socket.IO (mode en ligne uniquement) ─────────────────────────────────
+  if (ROOM_ID) {
+    socket = io();
+
+    socket.on('connect', () => {
+      socket.emit('join_game_room', { room_id: ROOM_ID });
+    });
+
+    socket.on('player_assigned', ({ player_num }) => {
+      myPlayer = player_num;
+      showWaitingOverlay();
+      updateHUD();
+    });
+
+    socket.on('game_start', ({ player_num }) => {
+      hideWaitingOverlay();
+      flash(myPlayer === 1 ? 'Vous êtes Joueur 1  (Blanc)' : 'Vous êtes Joueur 2  (Jaune)');
+      updateHUD();
+    });
+
+    socket.on('opponent_shoot', ({ angle, power, player_num }) => {
+      if (mode !== 'ATTENTE' || joueur !== player_num) return;
+      applyShot(angle, power, player_num);
+    });
+
+    socket.on('opponent_left', () => {
+      showOpponentLeft();
+    });
+
+    socket.on('error', ({ msg }) => {
+      const titleEl = document.getElementById('overlay-wait__title');
+      titleEl.textContent = `Erreur : ${msg}`;
+      titleEl.style.color = '#ff4444';
+      document.getElementById('overlay-wait').style.display = 'flex';
+    });
   }
 
   updateHUD();

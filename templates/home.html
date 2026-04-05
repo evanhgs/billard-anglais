@@ -52,8 +52,16 @@
       text-align: center;
     }
 
-    .play-btn {
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
       margin-top: 6px;
+      width: 100%;
+      align-items: center;
+    }
+
+    .play-btn {
       padding: 10px 32px;
       border-radius: 8px;
       text-decoration: none;
@@ -65,10 +73,24 @@
       letter-spacing: 0.05em;
       transition: background 0.2s, box-shadow 0.2s;
       box-shadow: 0 0 16px rgba(255,221,0,0.35);
+      text-align: center;
+      width: 220px;
     }
     .play-btn:hover {
       background: #ffe94d;
       box-shadow: 0 0 28px rgba(255,221,0,0.6);
+    }
+
+    .play-btn-online {
+      background: transparent;
+      color: #ffdd00;
+      border: 1px solid rgba(255,221,0,0.5);
+      box-shadow: 0 0 12px rgba(255,221,0,0.15);
+    }
+    .play-btn-online:hover {
+      background: rgba(255,221,0,0.08);
+      box-shadow: 0 0 24px rgba(255,221,0,0.35);
+      color: #ffe94d;
     }
 
     .notice {
@@ -111,7 +133,10 @@
         <h1 class="message">Billard Anglais</h1>
         <div class="divider"></div>
         <span class="subtitle">Jeu de carambole 3D</span>
-        <a class="play-btn" href="/game">Jouer (2 players)</a>
+        <div class="btn-group">
+          <a class="play-btn" href="/game">Jouer en local</a>
+          <a class="play-btn play-btn-online" href="/create_room">Jouer en ligne</a>
+        </div>
         <span class="notice">Télécharger le jeu</span>
         <div id="downloads">
           <a class="dl-btn" href="{{ url_for('dlinux') }}">Linux</a>
