@@ -132,13 +132,28 @@
   { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
   </script>
 
+  <script type="application/json" id="room-config">{{ room_id | tojson }}</script>
+
   <script type="module">
   import * as THREE from 'three';
 
   // ─── Mode en ligne ─────────────────────────────────────────────────────────
-  const ROOM_ID = {{ room_id | tojson }};  // null = local, string = en ligne
+  const ROOM_ID = JSON.parse(document.getElementById('room-config').textContent);  // null = local, string = en ligne
   let myPlayer  = null;   // 1 ou 2, assigné par le serveur
   let socket    = null;
+
+  // ─── Sons ──────────────────────────────────────────────────────────────────
+  const sndChoc = new Audio('/static/choc.mp3');
+  const sndBois = new Audio('/static/boundaries_hit.mp3');
+  sndChoc.volume = 0.7;
+  sndBois.volume = 0.3;
+
+  function playSound(base) {
+    // Clone pour permettre plusieurs overlaps simultanés
+    const s = base.cloneNode();
+    s.volume = base.volume;
+    s.play().catch(() => {});
+  }
 
   // ─── Constantes ────────────────────────────────────────────────────────────
   const R      = 10;
@@ -443,6 +458,8 @@
     if (dot > 0) {
       a.vx  -= dot*nx;  a.vz  -= dot*nz;
       bb.vx += dot*nx;  bb.vz += dot*nz;
+      sndChoc.volume = Math.min(0.9, dot / 20);
+      playSound(sndChoc);
     }
     const sep = (R*2 - d) / 2;
     a.x  -= sep*nx;  a.z  -= sep*nz;
@@ -451,10 +468,16 @@
   }
 
   function wallBounce(q) {
-    if (q.x - R < -TX) { q.x = -TX + R; q.vx =  Math.abs(q.vx); }
-    if (q.x + R >  TX) { q.x =  TX - R; q.vx = -Math.abs(q.vx); }
-    if (q.z - R < -TZ) { q.z = -TZ + R; q.vz =  Math.abs(q.vz); }
-    if (q.z + R >  TZ) { q.z =  TZ - R; q.vz = -Math.abs(q.vz); }
+    let hit = false;
+    if (q.x - R < -TX) { q.x = -TX + R; q.vx =  Math.abs(q.vx); hit = true; }
+    if (q.x + R >  TX) { q.x =  TX - R; q.vx = -Math.abs(q.vx); hit = true; }
+    if (q.z - R < -TZ) { q.z = -TZ + R; q.vz =  Math.abs(q.vz); hit = true; }
+    if (q.z + R >  TZ) { q.z =  TZ - R; q.vz = -Math.abs(q.vz); hit = true; }
+    if (hit) {
+      const spd = Math.hypot(q.vx, q.vz);
+      sndBois.volume = Math.min(0.8, spd / 18);
+      playSound(sndBois);
+    }
   }
 
   function finTour() {
