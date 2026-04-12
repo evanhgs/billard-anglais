@@ -2,16 +2,17 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Billard 3D</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #0d0d0d; overflow: hidden; }
+    body { background: #0d0d0d; overflow: hidden; touch-action: none; }
 
     canvas { display: block; transition: opacity 0.15s; }
 
     #hud {
       position: absolute; top: 0; left: 0; right: 0;
-      padding: 14px; text-align: center;
+      padding: 10px; text-align: center;
       pointer-events: none; user-select: none;
       font-family: 'Courier New', monospace;
     }
@@ -19,22 +20,22 @@
       color: #fff; font-size: 22px; font-weight: bold;
       text-shadow: 0 0 12px rgba(255,255,255,0.25);
     }
-    #tour  { margin-top: 5px; font-size: 14px; }
+    #tour  { margin-top: 4px; font-size: 14px; }
     #puissance-bar {
-      margin-top: 5px; font-size: 13px; color: #ffdd00;
+      margin-top: 4px; font-size: 13px; color: #ffdd00;
       transition: opacity 0.15s;
       text-shadow: 0 0 8px rgba(255,221,0,0.5);
     }
 
     #btn-view {
-      position: absolute; top: 14px; right: 14px;
+      position: absolute; top: 10px; right: 10px;
       background: rgba(255,255,255,0.08);
       color: #ddd; border: 1px solid rgba(255,255,255,0.25);
       padding: 8px 16px; border-radius: 8px;
       cursor: pointer; font-family: 'Courier New', monospace;
       font-size: 12px; backdrop-filter: blur(6px);
       transition: background 0.2s, color 0.2s;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.05em; z-index: 10;
     }
     #btn-view:hover { background: rgba(255,255,255,0.18); color: #fff; }
 
@@ -51,6 +52,74 @@
       text-shadow: 0 0 24px rgba(255,221,0,0.9);
       opacity: 0; transition: opacity 0.4s;
       pointer-events: none; white-space: nowrap;
+    }
+
+    /* ── Contrôles mobile ───────────────────────────────────────────── */
+    #mobile-controls {
+      display: none;
+      position: absolute; bottom: 0; left: 0; right: 0;
+      padding: 10px 16px 20px;
+      pointer-events: none;
+    }
+    #mobile-controls > * { pointer-events: auto; }
+
+    .ctrl-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: 12px; margin-bottom: 8px;
+    }
+
+    .ctrl-btn {
+      background: rgba(255,255,255,0.08);
+      color: #ddd; border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 22px; font-weight: bold;
+      width: 54px; height: 54px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; user-select: none;
+      backdrop-filter: blur(6px);
+      transition: background 0.15s, transform 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .ctrl-btn:active { background: rgba(255,255,255,0.22); transform: scale(0.92); }
+
+    #btn-shoot {
+      background: rgba(255,221,0,0.15);
+      color: #ffdd00; border-color: rgba(255,221,0,0.4);
+      font-size: 18px; width: auto; padding: 0 28px;
+      height: 54px; letter-spacing: 0.05em;
+    }
+    #btn-shoot:active { background: rgba(255,221,0,0.35); }
+
+    #btn-view-mobile {
+      background: rgba(255,255,255,0.08);
+      color: #ddd; border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px; padding: 0 18px;
+      height: 44px; cursor: pointer;
+      backdrop-filter: blur(6px);
+      -webkit-tap-highlight-color: transparent;
+    }
+    #btn-view-mobile:active { background: rgba(255,255,255,0.22); }
+
+    .power-label {
+      color: #ffdd00; font-family: 'Courier New', monospace;
+      font-size: 15px; min-width: 28px; text-align: center;
+      text-shadow: 0 0 8px rgba(255,221,0,0.5);
+      user-select: none;
+    }
+
+    /* ── Mode mobile (détection tactile) ─────────────────────────── */
+    @media (pointer: coarse), (hover: none) {
+      #mobile-controls { display: block; }
+      #instructions { display: none; }
+      #btn-view { display: none; }
+      #scores { font-size: 18px; }
+      #tour { font-size: 12px; }
+      #puissance-bar { font-size: 12px; }
+      #message { font-size: 22px; }
+      #hud { padding: 6px 10px; }
     }
 
     /* ── Overlay d'attente ─────────────────────────────────────── */
@@ -125,6 +194,17 @@
     <div id="puissance-bar">Force &nbsp;████████░░░░░░░&nbsp; 8 / 20</div>
   </div>
   <button id="btn-view">Vue dessus</button>
+
+  <div id="mobile-controls">
+    <div class="ctrl-row">
+      <button class="ctrl-btn" id="btn-power-down">−</button>
+      <span class="power-label" id="power-label-mobile">8</span>
+      <button class="ctrl-btn" id="btn-power-up">+</button>
+      <button id="btn-shoot">Tirer</button>
+      <button id="btn-view-mobile">Vue dessus</button>
+    </div>
+  </div>
+
   <div id="instructions">Souris : Viser &nbsp;|&nbsp; ↑ ↓ : Force &nbsp;|&nbsp; Clic gauche : Tirer &nbsp;|&nbsp; V : Vue dessus</div>
   <div id="message"></div>
 
@@ -411,11 +491,17 @@
       const n = Math.round(puissance / 20 * 15);
       elP.textContent = `Force  ${'█'.repeat(n)}${'░'.repeat(15 - n)}  ${puissance} / 20`;
       elP.style.opacity = '1';
-      elI.textContent = 'Souris : Viser   |   ↑↓ : Force   |   Clic : Tirer   |   V : Vue dessus';
+      if (isTouchDevice) {
+        elI.textContent = 'Glissez : Viser   |   +/− : Force   |   Tirer';
+      } else {
+        elI.textContent = 'Souris : Viser   |   ↑↓ : Force   |   Clic : Tirer   |   V : Vue dessus';
+      }
     } else {
       elP.style.opacity = '0';
       elI.textContent = 'En jeu…';
     }
+    if (powerLabelMob) powerLabelMob.textContent = puissance;
+    if (btnViewMobile) btnViewMobile.textContent = viewMode === '3d' ? 'Vue dessus' : 'Vue 3D';
     if (ROOM_ID && myPlayer !== null) {
       const badgeColor = myPlayer === 1 ? '#f0ece0' : '#ffd700';
       const badgeName  = myPlayer === 1 ? 'Blanc'   : 'Jaune';
@@ -442,6 +528,7 @@
       activeCam = viewMode === '3d' ? camPersp : camOrtho;
       scene.fog = viewMode === '3d' ? gameFog  : null;
       btnView.textContent = viewMode === '3d' ? 'Vue dessus' : 'Vue 3D';
+      if (btnViewMobile) btnViewMobile.textContent = viewMode === '3d' ? 'Vue dessus' : 'Vue 3D';
       renderer.domElement.style.opacity = '1';
     }, 150);
   }
@@ -613,19 +700,20 @@
   const tablePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const aimPt      = new THREE.Vector3();
 
-  document.addEventListener('mousemove', e => {
-    if (mode !== 'ATTENTE') return;
-    mouse2d.x = (e.clientX / window.innerWidth)  *  2 - 1;
-    mouse2d.y = (e.clientY / window.innerHeight) * -2 + 1;
+  const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+  function aimFromScreen(clientX, clientY) {
+    mouse2d.x = (clientX / window.innerWidth)  *  2 - 1;
+    mouse2d.y = (clientY / window.innerHeight) * -2 + 1;
     raycaster.setFromCamera(mouse2d, activeCam);
     if (raycaster.ray.intersectPlane(tablePlane, aimPt)) {
       const cue = b[joueur - 1];
       aimAngle = Math.atan2(aimPt.z - cue.z, aimPt.x - cue.x);
     }
-  });
+  }
 
-  document.addEventListener('mousedown', e => {
-    if (e.button !== 0 || mode !== 'ATTENTE') return;
+  function doShoot() {
+    if (mode !== 'ATTENTE') return;
     if (ROOM_ID && joueur !== myPlayer) return;
     const vx = puissance * Math.cos(aimAngle);
     const vz = puissance * Math.sin(aimAngle);
@@ -636,6 +724,17 @@
     mode = 'EN_JEU';
     updateHUD();
     if (ROOM_ID) socket.emit('shoot', { room_id: ROOM_ID, angle: aimAngle, power: puissance });
+  }
+
+  // ── Souris (desktop) ──
+  document.addEventListener('mousemove', e => {
+    if (mode !== 'ATTENTE') return;
+    aimFromScreen(e.clientX, e.clientY);
+  });
+
+  document.addEventListener('mousedown', e => {
+    if (e.button !== 0 || mode !== 'ATTENTE') return;
+    doShoot();
   });
 
   document.addEventListener('keydown', e => {
@@ -645,6 +744,81 @@
     if (ROOM_ID && joueur !== myPlayer) return;
     if (e.key === 'ArrowUp'   && puissance < 20) { puissance++; updateHUD(); }
     if (e.key === 'ArrowDown' && puissance > 2)  { puissance--; updateHUD(); }
+  });
+
+  // ── Tactile (mobile) ──
+  let touchAiming = false;
+  const mobileControls = document.getElementById('mobile-controls');
+
+  document.addEventListener('touchstart', e => {
+    if (mode !== 'ATTENTE') return;
+    // Ignorer les touches sur les boutons de contrôle
+    if (e.target.closest('#mobile-controls')) return;
+    if (ROOM_ID && joueur !== myPlayer) return;
+    e.preventDefault();
+    touchAiming = true;
+    const t = e.touches[0];
+    aimFromScreen(t.clientX, t.clientY);
+  }, { passive: false });
+
+  document.addEventListener('touchmove', e => {
+    if (!touchAiming) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    aimFromScreen(t.clientX, t.clientY);
+  }, { passive: false });
+
+  document.addEventListener('touchend', e => {
+    touchAiming = false;
+  });
+
+  // ── Boutons mobiles ──
+  const btnPowerUp   = document.getElementById('btn-power-up');
+  const btnPowerDown = document.getElementById('btn-power-down');
+  const btnShoot     = document.getElementById('btn-shoot');
+  const btnViewMobile = document.getElementById('btn-view-mobile');
+  const powerLabelMob = document.getElementById('power-label-mobile');
+
+  let powerHoldInterval = null;
+
+  function startPowerHold(delta) {
+    stopPowerHold();
+    const step = () => {
+      if (mode !== 'ATTENTE') return;
+      if (delta > 0 && puissance < 20) { puissance++; updateHUD(); }
+      else if (delta < 0 && puissance > 2) { puissance--; updateHUD(); }
+    };
+    step();
+    powerHoldInterval = setInterval(step, 120);
+  }
+
+  function stopPowerHold() {
+    clearInterval(powerHoldInterval);
+    powerHoldInterval = null;
+  }
+
+  btnPowerUp.addEventListener('touchstart', e => { e.preventDefault(); startPowerHold(1); }, { passive: false });
+  btnPowerUp.addEventListener('touchend',   e => { e.preventDefault(); stopPowerHold(); }, { passive: false });
+  btnPowerUp.addEventListener('touchcancel', e => { stopPowerHold(); });
+  btnPowerUp.addEventListener('mousedown',  e => { e.preventDefault(); startPowerHold(1); });
+  btnPowerUp.addEventListener('mouseup',     e => { stopPowerHold(); });
+  btnPowerUp.addEventListener('mouseleave',  e => { stopPowerHold(); });
+
+  btnPowerDown.addEventListener('touchstart', e => { e.preventDefault(); startPowerHold(-1); }, { passive: false });
+  btnPowerDown.addEventListener('touchend',   e => { e.preventDefault(); stopPowerHold(); }, { passive: false });
+  btnPowerDown.addEventListener('touchcancel', e => { stopPowerHold(); });
+  btnPowerDown.addEventListener('mousedown',  e => { e.preventDefault(); startPowerHold(-1); });
+  btnPowerDown.addEventListener('mouseup',     e => { stopPowerHold(); });
+  btnPowerDown.addEventListener('mouseleave',  e => { stopPowerHold(); });
+
+  btnShoot.addEventListener('click', e => {
+    e.preventDefault();
+    doShoot();
+  });
+
+  btnViewMobile.addEventListener('click', e => {
+    e.preventDefault();
+    toggleView();
   });
 
   window.addEventListener('resize', () => {
@@ -657,6 +831,11 @@
     camOrtho.updateProjectionMatrix();
     renderer.setSize(W, H);
   });
+
+  // Empêcher le zoom pinche et les gestes navigateur sur mobile
+  document.addEventListener('gesturestart', e => e.preventDefault(), { passive: false });
+  document.addEventListener('gesturechange', e => e.preventDefault(), { passive: false });
+  document.addEventListener('gestureend', e => e.preventDefault(), { passive: false });
 
   // ─── Boucle ────────────────────────────────────────────────────────────────
   function loop() {
