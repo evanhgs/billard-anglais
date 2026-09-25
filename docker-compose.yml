@@ -12,7 +12,8 @@ services:
       - PYTHONUNBUFFERED=1
       - SECRET_KEY=${SECRET_KEY:-billard-secret-key-2024}
     volumes:
-      # Binaires servis par /download/* (dist/ est exclu de l'image par .dockerignore)
+      # Optionnel : binaires servis localement par /download/*. Sans eux, les liens
+      # redirigent vers la dernière GitHub Release.
       - ./dist:/app/dist:ro
     healthcheck:
       # curl n'existe pas dans l'image python:alpine
