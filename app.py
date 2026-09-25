@@ -6,7 +6,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from flask import Flask, abort, render_template, send_file, redirect, request
+from flask import Flask, render_template, send_file, redirect, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 
 app = Flask(__name__)
@@ -75,26 +75,29 @@ def game_online(room_id):
 
 # ─── Downloads ────────────────────────────────────────────────────────────────
 
+# Les binaires sont publiés dans les GitHub Releases (tag vX.Y.Z → workflow build-binaries).
+GITHUB_REPO = os.environ.get('GITHUB_REPO', 'evanhgs/billard-anglais')
+RELEASE_URL = f'https://github.com/{GITHUB_REPO}/releases/latest/download'
+
+
+def download_binary(filename):
+    """Sert le binaire depuis dist/ s'il existe localement, sinon redirige vers la dernière release."""
+    file_path = DIST_DIR / filename
+    if file_path.exists():
+        return send_file(file_path, as_attachment=True, download_name=filename)
+    return redirect(f'{RELEASE_URL}/{filename}')
+
 @app.route('/download/linux')
 def dlinux():
-    file_path = DIST_DIR / 'billard-linux'
-    if not file_path.exists():
-        abort(404, description='Binaire Linux introuvable.')
-    return send_file(file_path, as_attachment=True, download_name='billard-linux')
+    return download_binary('billard-linux')
 
 @app.route('/download/windows')
 def dwindows():
-    file_path = DIST_DIR / 'billard-windows.exe'
-    if not file_path.exists():
-        abort(404, description='Binaire Windows introuvable.')
-    return send_file(file_path, as_attachment=True, download_name='billard-windows.exe')
+    return download_binary('billard-windows.exe')
 
 @app.route('/download/macos')
 def dmacos():
-    file_path = DIST_DIR / 'billard-macos'
-    if not file_path.exists():
-        abort(404, description='Binaire macOS introuvable.')
-    return send_file(file_path, as_attachment=True, download_name='billard-macos')
+    return download_binary('billard-macos')
 
 
 # ─── Socket events ────────────────────────────────────────────────────────────
