@@ -9,4 +9,6 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--worker-class", "eventlet", "--workers", "1", "app:app"]
+# PORT est fourni par l'hébergeur (ex. Render) ; 8000 par défaut.
+# Un seul worker : les salles de jeu sont gardées en mémoire.
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8000} --worker-class eventlet --workers 1 app:app"]

@@ -1,0 +1,12 @@
+# Blueprint Render : New > Blueprint > sélectionner ce dépôt
+services:
+  - type: web
+    name: billard-anglais
+    runtime: docker
+    plan: free
+    branch: master
+    autoDeploy: true
+    healthCheckPath: /
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
