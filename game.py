@@ -147,6 +147,20 @@ def resoudre_collision(cxA, cyA, vxA, vyA, parA,
     translater_mesh(parB,  sep * nx,  sep * ny)
     return cxA, cyA, vxA, vyA, cxB, cyB, vxB, vyB, True
 
+def rebond_bandes(cx, cy, vx, vy, par):
+    """Rebond sur les bandes : inverse la vitesse et replace la boule dans la table
+    (une collision peut l'avoir poussée dans la bande)."""
+    nx = float(clip(cx, -TABLE_X + rayon, TABLE_X - rayon))
+    ny = float(clip(cy, -TABLE_Y + rayon, TABLE_Y - rayon))
+    if nx == cx and ny == cy:
+        return cx, cy, vx, vy
+    if nx != cx:
+        vx = float(abs(vx)) if nx > cx else -float(abs(vx))
+    if ny != cy:
+        vy = float(abs(vy)) if ny > cy else -float(abs(vy))
+    translater_mesh(par, nx - cx, ny - cy)
+    return nx, ny, vx, vy
+
 def _proj_poly(pts_3d):
     return [p for p in (project(x, y, z) for x, y, z in pts_3d) if p]
 
@@ -396,21 +410,6 @@ while True:
         if vx1 == vy1 == vx2 == vy2 == vx3 == vy3 == 0.0:
             fin_tour()
 
-    if cx1 - rayon <= -TABLE_X and vx1 < 0: vx1 *= -1
-    if cx1 + rayon >=  TABLE_X and vx1 > 0: vx1 *= -1
-    if cy1 - rayon <= -TABLE_Y and vy1 < 0: vy1 *= -1
-    if cy1 + rayon >=  TABLE_Y and vy1 > 0: vy1 *= -1
-
-    if cx2 - rayon <= -TABLE_X and vx2 < 0: vx2 *= -1
-    if cx2 + rayon >=  TABLE_X and vx2 > 0: vx2 *= -1
-    if cy2 - rayon <= -TABLE_Y and vy2 < 0: vy2 *= -1
-    if cy2 + rayon >=  TABLE_Y and vy2 > 0: vy2 *= -1
-
-    if cx3 - rayon <= -TABLE_X and vx3 < 0: vx3 *= -1
-    if cx3 + rayon >=  TABLE_X and vx3 > 0: vx3 *= -1
-    if cy3 - rayon <= -TABLE_Y and vy3 < 0: vy3 *= -1
-    if cy3 + rayon >=  TABLE_Y and vy3 > 0: vy3 *= -1
-
     cx1, cy1, vx1, vy1, cx2, cy2, vx2, vy2, t12 = resoudre_collision(
         cx1, cy1, vx1, vy1, paralleles1, cx2, cy2, vx2, vy2, paralleles2)
     cx1, cy1, vx1, vy1, cx3, cy3, vx3, vy3, t13 = resoudre_collision(
@@ -436,6 +435,10 @@ while True:
     if vx3 != 0.0 or vy3 != 0.0:
         rouler(paralleles3, cx3, cy3, vx3, vy3)
         cx3 += vx3;  cy3 += vy3
+
+    cx1, cy1, vx1, vy1 = rebond_bandes(cx1, cy1, vx1, vy1, paralleles1)
+    cx2, cy2, vx2, vy2 = rebond_bandes(cx2, cy2, vx2, vy2, paralleles2)
+    cx3, cy3, vx3, vy3 = rebond_bandes(cx3, cy3, vx3, vy3, paralleles3)
 
     screen.blit(bg_surf, (0, 0))
 

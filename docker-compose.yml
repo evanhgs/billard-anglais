@@ -10,8 +10,13 @@ services:
       - "8811:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - SECRET_KEY=${SECRET_KEY:-billard-secret-key-2024}
+    volumes:
+      # Binaires servis par /download/* (dist/ est exclu de l'image par .dockerignore)
+      - ./dist:/app/dist:ro
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      # curl n'existe pas dans l'image python:alpine
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/', timeout=4)"]
       interval: 30s
       timeout: 5s
       retries: 3
