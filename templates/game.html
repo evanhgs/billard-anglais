@@ -170,10 +170,10 @@
     /* ── Badge joueur ──────────────────────────────────────────── */
     #player-badge { pointer-events: none; user-select: none; }
   </style>
+  {% if room_id %}
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  {% endif %}
 </head>
-{% if room_id %}
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-{% endif %}
 <body>
   <div id="overlay-wait" style="display:none">
     <div id="overlay-wait__box">
@@ -221,6 +221,8 @@
   const ROOM_ID = JSON.parse(document.getElementById('room-config').textContent);  // null = local, string = en ligne
   let myPlayer  = null;   // 1 ou 2, assigné par le serveur
   let socket    = null;
+  let gameStarted = false; // true quand les deux joueurs sont présents
+  let shooter     = null;  // joueur ayant effectué le tir en cours
 
   // ─── Sons ──────────────────────────────────────────────────────────────────
   const sndChoc = new Audio('/static/choc.mp3');
@@ -487,7 +489,7 @@
     const color = joueur === 1 ? '#f0ece0' : '#ffd700';
     elT.textContent = `● Tour : Joueur ${joueur}  (${nom})`;
     elT.style.color = color;
-    if (mode === 'ATTENTE') {
+    if (canPlay()) {
       const n = Math.round(puissance / 20 * 15);
       elP.textContent = `Force  ${'█'.repeat(n)}${'░'.repeat(15 - n)}  ${puissance} / 20`;
       elP.style.opacity = '1';
@@ -498,7 +500,8 @@
       }
     } else {
       elP.style.opacity = '0';
-      elI.textContent = 'En jeu…';
+      if (mode !== 'ATTENTE') elI.textContent = 'En jeu…';
+      else elI.textContent = gameStarted ? 'Tour de l\'adversaire…' : '';
     }
     if (powerLabelMob) powerLabelMob.textContent = puissance;
     if (btnViewMobile) btnViewMobile.textContent = viewMode === '3d' ? 'Vue dessus' : 'Vue 3D';
@@ -568,15 +571,44 @@
   }
 
   function finTour() {
-    if (touched.size === 2) {
+    const caramboleCount = touched.size;
+    touched = new Set();
+    col12 = col13 = col23 = false;
+    if (ROOM_ID && gameStarted && shooter !== myPlayer) {
+      // Tir adverse : on attend l'état final envoyé par le tireur (turn_result)
+      // pour éviter toute désynchronisation entre les deux navigateurs.
+      mode = 'SYNC';
+      updateHUD();
+      return;
+    }
+    if (caramboleCount === 2) {
       scores[joueur - 1]++;
       flash('Carambole ! +1 point — rejoue');
     } else {
       joueur = joueur === 1 ? 2 : 1;
     }
+    mode = 'ATTENTE';
+    updateHUD();
+    if (ROOM_ID && socket) {
+      socket.emit('turn_result', {
+        room_id: ROOM_ID,
+        balls:   b.map(q => ({ x: q.x, z: q.z })),
+        scores,
+        joueur,
+      });
+    }
+  }
+
+  // État final du tour reçu du tireur (mode en ligne)
+  function applyTurnResult(balls, newScores, newJoueur) {
+    const carambole = newScores[0] + newScores[1] > scores[0] + scores[1];
+    balls.forEach((q, i) => { b[i].x = q.x; b[i].z = q.z; b[i].vx = b[i].vz = 0; });
+    scores = newScores;
+    joueur = newJoueur;
     touched = new Set();
     col12 = col13 = col23 = false;
     mode = 'ATTENTE';
+    if (carambole) flash('Carambole adverse ! +1 point');
     updateHUD();
   }
 
@@ -586,6 +618,8 @@
     const vz = power * Math.sin(angle);
     touched  = new Set();
     col12 = col13 = col23 = false;
+    joueur  = playerNum;
+    shooter = playerNum;
     if (playerNum === 1) { b[0].vx = vx; b[0].vz = vz; }
     else                 { b[1].vx = vx; b[1].vz = vz; }
     mode = 'EN_JEU';
@@ -594,13 +628,13 @@
 
   // ─── Overlay d'attente ─────────────────────────────────────────────────────
   function showWaitingOverlay() {
-    const overlay  = document.getElementById('overlay-wait');
-    const urlEl    = document.getElementById('overlay-wait__url');
+    document.getElementById('overlay-wait__url').textContent = window.location.href;
+    document.getElementById('overlay-wait').style.display = 'flex';
+  }
+
+  {
     const copyBtn  = document.getElementById('overlay-wait__copy');
     const copiedEl = document.getElementById('overlay-wait__copied');
-    urlEl.textContent = window.location.href;
-    overlay.style.display = 'flex';
-    copyBtn.addEventListener('mousedown', e => e.stopPropagation());
     copyBtn.addEventListener('click', () => {
       const url = window.location.href;
       if (navigator.clipboard) {
@@ -627,7 +661,8 @@
   }
 
   function showOpponentLeft() {
-    myPlayer = null;   // bloque tout input (joueur !== null toujours)
+    myPlayer    = null;   // bloque tout input (joueur !== null toujours)
+    gameStarted = false;
     elM.textContent   = 'Adversaire déconnecté';
     elM.style.opacity = '1';
     renderer.domElement.style.opacity = '0.35';
@@ -653,7 +688,7 @@
         q.vx *= FRIC;  q.vz *= FRIC;
         if (Math.hypot(q.vx, q.vz) < STOP_V) q.vx = q.vz = 0;
       }
-      if (b.every(q => q.vx === 0 && q.vz === 0)) finTour();
+      if (b.every(q => q.vx === 0 && q.vz === 0)) { finTour(); return; }
 
       const t12 = collide(b[0], b[1]);
       const t13 = collide(b[0], b[2]);
@@ -676,7 +711,7 @@
     roll(mesh3, b[2]);  shad3.position.set(b[2].x, 0.1, b[2].z);
 
     const cue     = b[joueur - 1];
-    const showAim = mode === 'ATTENTE';
+    const showAim = canPlay();
     aimLine.visible = showAim;
     aimDots.forEach(d => d.visible = showAim);
     if (showAim) {
@@ -702,6 +737,13 @@
 
   const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
+  // Le joueur local peut-il viser / régler la force / tirer ?
+  function canPlay() {
+    if (mode !== 'ATTENTE') return false;
+    if (!ROOM_ID) return true;
+    return gameStarted && joueur === myPlayer;
+  }
+
   function aimFromScreen(clientX, clientY) {
     mouse2d.x = (clientX / window.innerWidth)  *  2 - 1;
     mouse2d.y = (clientY / window.innerHeight) * -2 + 1;
@@ -713,35 +755,28 @@
   }
 
   function doShoot() {
-    if (mode !== 'ATTENTE') return;
-    if (ROOM_ID && joueur !== myPlayer) return;
-    const vx = puissance * Math.cos(aimAngle);
-    const vz = puissance * Math.sin(aimAngle);
-    touched = new Set();
-    col12 = col13 = col23 = false;
-    if (joueur === 1) { b[0].vx = vx; b[0].vz = vz; }
-    else              { b[1].vx = vx; b[1].vz = vz; }
-    mode = 'EN_JEU';
-    updateHUD();
+    if (!canPlay()) return;
+    applyShot(aimAngle, puissance, joueur);
     if (ROOM_ID) socket.emit('shoot', { room_id: ROOM_ID, angle: aimAngle, power: puissance });
   }
 
   // ── Souris (desktop) ──
   document.addEventListener('mousemove', e => {
-    if (mode !== 'ATTENTE') return;
+    if (!canPlay()) return;
     aimFromScreen(e.clientX, e.clientY);
   });
 
-  document.addEventListener('mousedown', e => {
-    if (e.button !== 0 || mode !== 'ATTENTE') return;
+  // Sur le canvas uniquement : un clic sur un bouton (vue, overlay…) ne doit pas tirer
+  renderer.domElement.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    aimFromScreen(e.clientX, e.clientY);
     doShoot();
   });
 
   document.addEventListener('keydown', e => {
     if (['ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault();
     if (e.key === 'v' || e.key === 'V') { toggleView(); return; }
-    if (mode !== 'ATTENTE') return;
-    if (ROOM_ID && joueur !== myPlayer) return;
+    if (!canPlay()) return;
     if (e.key === 'ArrowUp'   && puissance < 20) { puissance++; updateHUD(); }
     if (e.key === 'ArrowDown' && puissance > 2)  { puissance--; updateHUD(); }
   });
@@ -750,11 +785,8 @@
   let touchAiming = false;
   const mobileControls = document.getElementById('mobile-controls');
 
-  document.addEventListener('touchstart', e => {
-    if (mode !== 'ATTENTE') return;
-    // Ignorer les touches sur les boutons de contrôle
-    if (e.target.closest('#mobile-controls')) return;
-    if (ROOM_ID && joueur !== myPlayer) return;
+  renderer.domElement.addEventListener('touchstart', e => {
+    if (!canPlay()) return;
     e.preventDefault();
     touchAiming = true;
     const t = e.touches[0];
@@ -771,6 +803,9 @@
   document.addEventListener('touchend', e => {
     touchAiming = false;
   });
+  document.addEventListener('touchcancel', e => {
+    touchAiming = false;
+  });
 
   // ── Boutons mobiles ──
   const btnPowerUp   = document.getElementById('btn-power-up');
@@ -784,7 +819,7 @@
   function startPowerHold(delta) {
     stopPowerHold();
     const step = () => {
-      if (mode !== 'ATTENTE') return;
+      if (!canPlay()) return;
       if (delta > 0 && puissance < 20) { puissance++; updateHUD(); }
       else if (delta < 0 && puissance > 2) { puissance--; updateHUD(); }
     };
@@ -838,9 +873,19 @@
   document.addEventListener('gestureend', e => e.preventDefault(), { passive: false });
 
   // ─── Boucle ────────────────────────────────────────────────────────────────
-  function loop() {
+  const STEP_MS  = 1000 / 60;
+  let lastTime   = performance.now();
+  let accumulator = 0;
+
+  function loop(now) {
     requestAnimationFrame(loop);
-    update();
+    // Borne le rattrapage (onglet en arrière-plan, gros ralentissement)
+    accumulator += Math.min(now - lastTime, 250);
+    lastTime = now;
+    while (accumulator >= STEP_MS) {
+      update();
+      accumulator -= STEP_MS;
+    }
     renderer.render(scene, activeCam);
   }
 
@@ -859,14 +904,19 @@
     });
 
     socket.on('game_start', ({ player_num }) => {
+      gameStarted = true;
       hideWaitingOverlay();
       flash(myPlayer === 1 ? 'Vous êtes Joueur 1  (Blanc)' : 'Vous êtes Joueur 2  (Jaune)');
       updateHUD();
     });
 
     socket.on('opponent_shoot', ({ angle, power, player_num }) => {
-      if (mode !== 'ATTENTE' || joueur !== player_num) return;
+      if (player_num === myPlayer) return;
       applyShot(angle, power, player_num);
+    });
+
+    socket.on('turn_result', ({ balls, scores: newScores, joueur: newJoueur }) => {
+      applyTurnResult(balls, newScores, newJoueur);
     });
 
     socket.on('opponent_left', () => {
@@ -882,7 +932,7 @@
   }
 
   updateHUD();
-  loop();
+  requestAnimationFrame(loop);
   </script>
 </body>
 </html>
